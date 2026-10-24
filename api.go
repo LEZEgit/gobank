@@ -26,7 +26,7 @@ func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHTTPHandlerFunc(s.handleAccount))
-	router.HandleFunc("/account/{id}", makeHTTPHandlerFunc(s.handleGetAccountByID))
+	router.HandleFunc("/account/{id}", makeHTTPHandlerFunc(s.handleAccountByID))
 
 	log.Println("JSON API Server running on PORT", s.listenAddr)
 
@@ -41,6 +41,14 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 	}
 	if r.Method == "POST" {
 		return s.handleCreateAccount(w, r)
+	}
+
+	return fmt.Errorf("Method not allowed: %s", r.Method)
+}
+
+func (s *APIServer) handleAccountByID(w http.ResponseWriter, r *http.Request) error {
+	if r.Method == "GET" {
+		return s.handleGetAccountByID(w, r)
 	}
 	if r.Method == "DELETE" {
 		return s.handleDeleteAccount(w, r)
@@ -58,11 +66,7 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 }
 
 func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error {
-	idString := mux.Vars(r)["id"]
-	if idString == "" {
-		return fmt.Errorf("[LOG] Couldn't parse URL Parameters in GET /account/id")
-	}
-	id, err := strconv.Atoi(idString)
+	id, err := getID(r)
 	if err != nil {
 		return err
 	}
@@ -93,7 +97,15 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error {
-	return nil
+	id, err := getID(r)
+	if err != nil {
+		return err
+	}
+	err = s.store.DeleteAccount(id)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, map[string]int{"Deleted Account with id:": id})
 }
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
@@ -107,7 +119,7 @@ func WriteJSON(w http.ResponseWriter, statusCode int, payload any) error {
 }
 
 type ApiError struct {
-	Error string
+	Error string `json:"error"`
 }
 
 type apiFunc func(http.ResponseWriter, *http.Request) error
@@ -119,4 +131,16 @@ func makeHTTPHandlerFunc(f apiFunc) http.HandlerFunc {
 			WriteJSON(w, http.StatusBadRequest, ApiError{Error: err.Error()})
 		}
 	}
+}
+
+func getID(r *http.Request) (int, error) {
+	idString := mux.Vars(r)["id"]
+	if idString == "" {
+		return -1, fmt.Errorf("[LOG] No ID passed in the URL")
+	}
+	id, err := strconv.Atoi(idString)
+	if err != nil {
+		return -1, fmt.Errorf("[LOG] Couldn't parse URL Parameters in GET /account/id")
+	}
+	return id, nil
 }
