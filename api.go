@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 )
@@ -25,13 +26,13 @@ func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/account", makeHTTPHandlerFunc(s.handleAccount))
+	router.HandleFunc("/account/{id}", makeHTTPHandlerFunc(s.handleGetAccountByID))
 
 	log.Println("JSON API Server running on PORT", s.listenAddr)
 
 	if err := http.ListenAndServe(s.listenAddr, router); err != nil {
 		log.Println("Error starting the server: ", err.Error())
 	}
-
 }
 
 func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error {
@@ -54,6 +55,22 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 		return err
 	}
 	return WriteJSON(w, http.StatusOK, accounts)
+}
+
+func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error {
+	idString := mux.Vars(r)["id"]
+	if idString == "" {
+		return fmt.Errorf("[LOG] Couldn't parse URL Parameters in GET /account/id")
+	}
+	id, err := strconv.Atoi(idString)
+	if err != nil {
+		return err
+	}
+	account, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, account)
 }
 
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
