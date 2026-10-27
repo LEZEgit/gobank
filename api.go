@@ -101,16 +101,7 @@ func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return fmt.Errorf("JWT_SECRET is not configured")
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": strconv.Itoa(id),
-		"exp": time.Now().Add(time.Minute).Unix(),
-	})
-	signedToken, err := token.SignedString([]byte(secret))
+	signedToken, err := createJwtToken(id)
 	if err != nil {
 		return err
 	}
@@ -191,4 +182,17 @@ func getID(r *http.Request) (int, error) {
 		return -1, fmt.Errorf("[LOG] Couldn't parse URL Parameters in GET /account/id")
 	}
 	return id, nil
+}
+
+func createJwtToken(id int) (string, error) {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return "", fmt.Errorf("JWT_SECRET is not configured")
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": strconv.Itoa(id),
+		"exp": time.Now().Add(time.Minute).Unix(),
+	})
+	return token.SignedString([]byte(secret))
 }
