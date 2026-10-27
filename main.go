@@ -2,9 +2,12 @@ package main
 
 import (
 	"log"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	godotenv.Load()
 	store, err := NewPostGresStore()
 	if err != nil {
 		log.Fatal(err)

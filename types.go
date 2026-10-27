@@ -2,7 +2,12 @@ package main
 
 import (
 	"time"
+
 )
+
+type LoginRequest struct {
+	ID int `json:"user_id"`
+}
 
 type TransferRequest struct {
 	ToAccount int `json:"to_account"`

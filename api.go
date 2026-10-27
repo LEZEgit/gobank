@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"time"
 
+	jwt "github.com/golang-jwt/jwt/v4"
 	"github.com/gorilla/mux"
 )
 
@@ -25,8 +28,10 @@ func NewAPIServer(listenAddr string, store Storage) *APIServer {
 func (s *APIServer) Run() {
 	router := mux.NewRouter()
 
+	router.HandleFunc("/login", makeHTTPHandlerFunc(s.handleLogin))
 	router.HandleFunc("/account", makeHTTPHandlerFunc(s.handleAccount))
-	router.HandleFunc("/account/{id}", makeHTTPHandlerFunc(s.handleAccountByID))
+	router.HandleFunc("/account/transfer", makeHTTPHandlerFunc(s.handleTransfer))
+	router.HandleFunc("/account/{id}", s.authMiddleware(s.handleAccountByID))
 
 	log.Println("JSON API Server running on PORT", s.listenAddr)
 
@@ -46,9 +51,9 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 	return fmt.Errorf("Method not allowed: %s", r.Method)
 }
 
-func (s *APIServer) handleAccountByID(w http.ResponseWriter, r *http.Request) error {
+func (s *APIServer) handleAccountByID(w http.ResponseWriter, r *http.Request, client_account *Account) error {
 	if r.Method == "GET" {
-		return s.handleGetAccountByID(w, r)
+		return s.handleGetAccountByID(w, r, client_account)
 	}
 	if r.Method == "DELETE" {
 		return s.handleDeleteAccount(w, r)
@@ -65,11 +70,15 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 	return WriteJSON(w, http.StatusOK, accounts)
 }
 
-func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error {
+func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request, client_account *Account) error {
 	id, err := getID(r)
 	if err != nil {
 		return err
 	}
+	if id != client_account.ID {
+		return WriteJSON(w, http.StatusForbidden, ApiError{Error: "Can't access other's account"})
+	}
+
 	account, err := s.store.GetAccountByID(id)
 	if err != nil {
 		return err
@@ -77,11 +86,44 @@ func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request)
 	return WriteJSON(w, http.StatusOK, account)
 }
 
+func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
+	loginRequest := new(LoginRequest)
+	if err := json.NewDecoder(r.Body).Decode(loginRequest); err != nil {
+		return err
+	}
+	defer r.Body.Close()
+
+	id := loginRequest.ID
+	log.Printf("User with id: %v tried logging in", id)
+
+	_, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return err
+	}
+
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		return fmt.Errorf("JWT_SECRET is not configured")
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": strconv.Itoa(id),
+		"exp": time.Now().Add(time.Minute).Unix(),
+	})
+	signedToken, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return err
+	}
+
+	return WriteJSON(w, http.StatusOK, map[string]string{"token": signedToken})
+}
+
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error {
 	createAccountReq := new(CreateAccountRequest)
 	if err := json.NewDecoder(r.Body).Decode(createAccountReq); err != nil {
 		return err
 	}
+	defer r.Body.Close()
 
 	account := NewAccount(
 		createAccountReq.FirstName,
@@ -109,6 +151,12 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
+	transferReq := new(TransferRequest)
+	if err := json.NewDecoder(r.Body).Decode(transferReq); err != nil {
+		return err
+	}
+	defer r.Body.Close()
+
 	return nil
 }
 
