@@ -1,3 +1,5 @@
+# Add a nextjs frontend to this
+
 1. I want to protect routes R1 =  set of protected routes
 2.
 middleware:
